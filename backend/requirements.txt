@@ -1,0 +1,33 @@
+# FastAPI + Server (Python 3.11 compatible)
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# LangChain (Python 3.11 compatible)
+langchain==0.1.13
+langchain-core==0.1.40
+langchain-community==0.0.31
+langchain-text-splitters==0.0.1
+langchain-google-genai==0.0.11
+
+# Google Generative AI
+google-generativeai==0.4.1
+
+# Vector DB (simplified version without telemetry to avoid conflicts)
+chromadb==0.4.22
+
+# PDF Loader
+pypdf==4.1.0
+
+# Environment
+python-dotenv==1.0.1
+
+# Pydantic (Stable with FastAPI)
+pydantic==2.6.1
+pydantic-settings==2.2.1
+
+# Utilities
+typing-extensions==4.9.0
+
+# Local embeddings (no API quota limits)
+sentence-transformers==2.3.1
