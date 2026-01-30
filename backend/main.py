@@ -120,6 +120,7 @@ async def health_check():
 async def load_pdf(file: UploadFile = File(...)):
     """
     Upload and process a PDF file (stores in S3)
+    Clears old PDFs from S3 and old chunks from ChromaDB before uploading.
 
     Args:
         file: PDF file to upload
@@ -147,8 +148,17 @@ async def load_pdf(file: UploadFile = File(...)):
         content = await file.read()
         print(f"File size: {len(content)} bytes")
 
+        # Clear old data before uploading new PDF
+        print("Clearing old PDFs from S3...")
+        deleted_count = s3_storage.delete_all_files()
+        print(f"Deleted {deleted_count} old PDF(s) from S3")
+
+        print("Clearing old chunks from ChromaDB...")
+        vector_store.clear_database()
+        print("ChromaDB cleared")
+
         # Upload to S3
-        print("Uploading to S3...")
+        print("Uploading new PDF to S3...")
         s3_key = s3_storage.upload_file(content, file.filename)
         print(f"Uploaded to S3: {s3_key}")
 

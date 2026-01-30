@@ -13,7 +13,6 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from typing import List, Optional
 from langchain_core.documents import Document
 import os
-import shutil
 
 
 class VectorStore:
@@ -146,10 +145,20 @@ class VectorStore:
     def clear_database(self) -> None:
         """Clear all documents from the vector store"""
         try:
-            if os.path.exists(self.persist_directory):
-                shutil.rmtree(self.persist_directory)
-                print(f"Cleared vector store at {self.persist_directory}")
-                self._initialize_vectorstore()
+            if self.vectorstore is not None:
+                # Get the underlying collection and delete all documents
+                collection = self.vectorstore._collection
+                # Get all document IDs
+                all_ids = collection.get()["ids"]
+                if all_ids:
+                    collection.delete(ids=all_ids)
+                    print(f"Deleted {len(all_ids)} documents from vector store")
+                else:
+                    print("Vector store was already empty")
+                # Reset vectorstore to None so it gets recreated on next add
+                self.vectorstore = None
+            else:
+                print("No vector store to clear")
         except Exception as e:
             raise Exception(f"Error clearing vector store: {str(e)}")
 

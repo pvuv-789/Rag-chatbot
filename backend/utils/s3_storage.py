@@ -138,6 +138,30 @@ class S3Storage:
         except ClientError as e:
             raise Exception(f"Failed to list S3 files: {str(e)}")
 
+    def delete_all_files(self) -> int:
+        """
+        Delete all PDF files from the bucket
+
+        Returns:
+            Number of files deleted
+        """
+        try:
+            files = self.list_files()
+            deleted_count = 0
+
+            for file in files:
+                self.s3_client.delete_object(
+                    Bucket=self.bucket_name,
+                    Key=file["key"]
+                )
+                print(f"Deleted s3://{self.bucket_name}/{file['key']}")
+                deleted_count += 1
+
+            return deleted_count
+
+        except ClientError as e:
+            raise Exception(f"Failed to delete S3 files: {str(e)}")
+
     def get_file_url(self, s3_key: str, expires_in: int = 3600) -> str:
         """
         Generate a presigned URL for temporary access
