@@ -31,3 +31,6 @@ typing-extensions==4.9.0
 
 # Local embeddings (no API quota limits)
 sentence-transformers==2.3.1
+
+# AWS S3 Storage
+boto3==1.35.0

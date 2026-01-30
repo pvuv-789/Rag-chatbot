@@ -10,7 +10,8 @@
       "Bash(npm uninstall:*)",
       "Bash(npm run dev:*)",
       "Bash(venv/Scripts/python.exe:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(dir \"C:\\\\Users\\\\Dell\\\\Downloads\\\\Rag-chatbot\\\\rag-chatbot\\\\backend\\\\db\")"
     ],
     "deny": [],
     "ask": []

@@ -10,12 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
-import shutil
 from dotenv import load_dotenv
 
 from utils.loader import DocumentLoader
 from utils.vectorstore import VectorStore
 from utils.qa import QASystem
+from utils.s3_storage import S3Storage
 
 # Load environment variables
 load_dotenv()
@@ -41,14 +41,10 @@ app.add_middleware(
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./db")
 MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash")
-DOCUMENTS_DIR = "./documents"
 
 # Validate API key
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in environment variables")
-
-# Create documents directory
-os.makedirs(DOCUMENTS_DIR, exist_ok=True)
 
 # Initialize components
 document_loader = DocumentLoader(chunk_size=1000, chunk_overlap=200)
@@ -61,6 +57,7 @@ vector_store = VectorStore(
     use_local_embeddings=USE_LOCAL_EMBEDDINGS
 )
 qa_system = QASystem(api_key=GEMINI_API_KEY, model_name=MODEL_NAME)
+s3_storage = S3Storage()
 
 
 # Pydantic models
@@ -78,6 +75,7 @@ class LoadPDFResponse(BaseModel):
     status: str
     message: str
     chunks_stored: int
+    s3_key: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -121,7 +119,7 @@ async def health_check():
 @app.post("/load_pdf", response_model=LoadPDFResponse)
 async def load_pdf(file: UploadFile = File(...)):
     """
-    Upload and process a PDF file
+    Upload and process a PDF file (stores in S3)
 
     Args:
         file: PDF file to upload
@@ -129,6 +127,7 @@ async def load_pdf(file: UploadFile = File(...)):
     Returns:
         Status message and number of chunks stored
     """
+    temp_path = None
     try:
         # Log the upload attempt
         print(f"Received file upload request: {file.filename}")
@@ -144,19 +143,22 @@ async def load_pdf(file: UploadFile = File(...)):
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-        # Save uploaded file
-        file_path = os.path.join(DOCUMENTS_DIR, file.filename)
-        print(f"Saving file to: {file_path}")
+        # Read file content
+        content = await file.read()
+        print(f"File size: {len(content)} bytes")
 
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+        # Upload to S3
+        print("Uploading to S3...")
+        s3_key = s3_storage.upload_file(content, file.filename)
+        print(f"Uploaded to S3: {s3_key}")
 
-        print(f"File saved successfully, size: {os.path.getsize(file_path)} bytes")
+        # Download temporarily for processing
+        print("Downloading for processing...")
+        temp_path = s3_storage.download_file(s3_key)
 
         # Load and process PDF
         print("Processing PDF...")
-        chunks = document_loader.load_pdf(file_path)
+        chunks = document_loader.load_pdf(temp_path)
         print(f"PDF split into {len(chunks)} chunks")
 
         # Add to vector store
@@ -166,8 +168,9 @@ async def load_pdf(file: UploadFile = File(...)):
 
         return LoadPDFResponse(
             status="success",
-            message=f"PDF '{file.filename}' processed and stored successfully",
-            chunks_stored=num_chunks
+            message=f"PDF '{file.filename}' uploaded to S3 and processed successfully",
+            chunks_stored=num_chunks,
+            s3_key=s3_key
         )
 
     except HTTPException as he:
@@ -178,6 +181,11 @@ async def load_pdf(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+            print(f"Cleaned up temp file: {temp_path}")
 
 
 @app.post("/ask", response_model=AnswerResponse)
@@ -256,13 +264,13 @@ async def clear_database():
 @app.get("/documents")
 async def list_documents():
     """
-    List all uploaded PDF documents
+    List all uploaded PDF documents from S3
 
     Returns:
         List of document filenames
     """
     try:
-        files = [f for f in os.listdir(DOCUMENTS_DIR) if f.endswith('.pdf')]
+        files = s3_storage.list_files()
         return {
             "status": "success",
             "documents": files,
@@ -270,6 +278,28 @@ async def list_documents():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+
+
+@app.delete("/documents/{filename}")
+async def delete_document(filename: str):
+    """
+    Delete a PDF document from S3
+
+    Args:
+        filename: Name of the file to delete
+
+    Returns:
+        Status message
+    """
+    try:
+        s3_key = f"documents/{filename}"
+        s3_storage.delete_file(s3_key)
+        return {
+            "status": "success",
+            "message": f"Document '{filename}' deleted from S3"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
 
 
 if __name__ == "__main__":

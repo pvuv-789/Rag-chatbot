@@ -32,7 +32,7 @@ db/
 *.sqlite3
 
 # Documents
-documents/*.pdf
+
 
 # IDE
 .vscode/
